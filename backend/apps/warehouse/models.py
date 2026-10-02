@@ -129,11 +129,81 @@ class Goods(models.Model):
         return self.quantity <= self.warning_threshold
 
 
+class StorageLocation(models.Model):
+    """保管位模型"""
+    name = models.CharField('保管位名称', max_length=50, unique=True)
+    capacity = models.PositiveIntegerField('容量', default=1)
+    description = models.CharField('位置描述', max_length=200, blank=True)
+    is_active = models.BooleanField('是否启用', default=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True,
+        related_name='created_storage_locations', verbose_name='创建人'
+    )
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'wh_storage_location'
+        verbose_name = '保管位'
+        verbose_name_plural = verbose_name
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class StorageReservation(models.Model):
+    """保管位预约模型"""
+    STATUS_CHOICES = [
+        ('active', '预约有效'),
+        ('occupied', '已占用'),
+        ('released', '已释放'),
+        ('expired', '已过期'),
+    ]
+
+    location = models.ForeignKey(
+        StorageLocation, on_delete=models.PROTECT,
+        related_name='reservations', verbose_name='保管位'
+    )
+    applicant = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True,
+        related_name='storage_reservations', verbose_name='预约人'
+    )
+    team_name = models.CharField('办案队伍', max_length=100)
+    quantity = models.PositiveIntegerField('预约容量', default=1)
+    start_time = models.DateTimeField('开始时间')
+    end_time = models.DateTimeField('结束时间')
+    status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='active')
+    occupied_at = models.DateTimeField('占用时间', null=True, blank=True)
+    released_at = models.DateTimeField('释放时间', null=True, blank=True)
+    expired_at = models.DateTimeField('过期时间', null=True, blank=True)
+    remark = models.TextField('备注', blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'wh_storage_reservation'
+        verbose_name = '保管位预约'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['location', 'status']),
+            models.Index(fields=['location', 'start_time', 'end_time']),
+        ]
+
+    def __str__(self):
+        return f"{self.location.name} - {self.team_name} - {self.get_status_display()}"
+
+
 class StockIn(models.Model):
     """入库记录模型"""
     goods = models.ForeignKey(
         Goods, on_delete=models.CASCADE,
         related_name='stock_ins', verbose_name='货物'
+    )
+    reservation = models.OneToOneField(
+        StorageReservation, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='stock_in', verbose_name='关联预约'
     )
     operator = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True,

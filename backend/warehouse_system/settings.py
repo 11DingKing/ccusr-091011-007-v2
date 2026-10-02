@@ -36,6 +36,8 @@ DATABASES = {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": os.environ.get("SQLITE_PATH", str(BASE_DIR / "db.sqlite3")),
         "OPTIONS": {"timeout": 20},
+        # 并发测试需要多线程共享同一个数据库，内存库会让每个连接各看到一份数据
+        "TEST": {"NAME": os.environ.get("SQLITE_TEST_PATH", str(BASE_DIR / "test_db.sqlite3"))},
     }
 }
 AUTH_PASSWORD_VALIDATORS = []

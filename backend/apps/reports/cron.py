@@ -94,6 +94,18 @@ def generate_daily_report():
     logger.info(f"每日报表生成完成: {yesterday}")
 
 
+def expire_storage_reservations():
+    """
+    保管位预约过期处理 - 定时任务
+    每分钟执行一次，把结束时间已过的有效预约标记为过期，释放其占用的容量
+    """
+    from apps.warehouse.services import expire_due_reservations
+
+    logger.info("开始执行保管位预约过期处理定时任务...")
+    count = expire_due_reservations()
+    logger.info(f"保管位预约过期处理完成，标记过期: {count} 条")
+
+
 def clean_old_logs():
     """
     清理旧日志 - 定时任务
