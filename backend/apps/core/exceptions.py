@@ -37,6 +37,15 @@ class NotFoundException(BusinessException):
         super().__init__(message, code=404)
 
 
+class ConflictException(BusinessException):
+    """资源冲突异常（HTTP 409），可携带冲突明细"""
+    def __init__(self, message="资源冲突", data=None):
+        self.message = message
+        self.code = 409
+        self.data_payload = data
+        super().__init__(message, code=409)
+
+
 def custom_exception_handler(exc, context):
     """
     自定义异常处理器
@@ -46,11 +55,12 @@ def custom_exception_handler(exc, context):
     
     # 处理业务异常
     if isinstance(exc, BusinessException):
+        data = getattr(exc, 'data_payload', None)
         return Response({
             'success': False,
             'code': exc.code,
             'message': exc.message,
-            'data': None
+            'data': data
         }, status=exc.code)
     
     # 处理Django验证异常

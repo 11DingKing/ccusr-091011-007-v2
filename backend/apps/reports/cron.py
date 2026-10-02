@@ -109,3 +109,16 @@ def clean_old_logs():
     ).delete()
     
     logger.info(f"日志清理完成，删除记录: {deleted_count} 条")
+
+
+def expire_reservations():
+    """
+    预约过期回收 - 定时任务
+    每10分钟执行，回收超过入库截止时间仍未送达的预约容量，
+    使过期后的重试不可能继续占用容量。
+    """
+    from apps.warehouse.services import expire_due_reservations
+
+    logger.info("开始执行保管位预约过期回收...")
+    expired = expire_due_reservations()
+    logger.info(f"预约过期回收完成，处理预约: {len(expired)} 条")

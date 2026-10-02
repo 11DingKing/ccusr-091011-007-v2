@@ -11,12 +11,14 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from apps.core.response import success_response, error_response
 from .models import Unit, Category, Variety, Goods, StockIn, StockOut, Warning, Approval
+from . import services
 from .serializers import (
     UnitSerializer, UnitCreateSerializer,
     CategorySerializer, CategoryCreateSerializer,
     VarietySerializer, VarietyCreateSerializer,
     GoodsSerializer, StockInSerializer, StockOutSerializer,
-    WarningSerializer, ApprovalSerializer
+    WarningSerializer, ApprovalSerializer,
+    StockInCreateSerializer,
 )
 
 logger = logging.getLogger('apps')
@@ -587,16 +589,61 @@ class GoodsListView(APIView):
 
 
 class StockInListView(APIView):
-    """入库记录列表视图"""
+    """入库记录列表 / 正式入库
+
+    正式入库必须提供有效预约：先校验预约在当前时间窗内（含宽限期）且容量充足，
+    消费预约容量后再写入入库记录，整体在同一事务内完成。
+    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
+        queryset = StockIn.objects.select_related('goods', 'operator', 'reservation')
+        goods_id = request.query_params.get('goods')
+        reservation_id = request.query_params.get('reservation')
+        if goods_id:
+            queryset = queryset.filter(goods_id=goods_id)
+        if reservation_id:
+            queryset = queryset.filter(reservation_id=reservation_id)
+        queryset = queryset.order_by('-stock_in_time')
+
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 10))
+        total = queryset.count()
+        records = queryset[(page - 1) * page_size:page * page_size]
+
         return success_response(data={
-            'list': [],
-            'total': 0,
-            'page': 1,
-            'page_size': 10
+            'list': StockInSerializer(records, many=True).data,
+            'total': total,
+            'page': page,
+            'page_size': page_size
         })
+
+    def post(self, request):
+        serializer = StockInCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            errors = serializer.errors
+            first_error = list(errors.values())[0]
+            if isinstance(first_error, list):
+                first_error = first_error[0]
+            return error_response(message=str(first_error))
+
+        data = serializer.validated_data
+        goods = Goods.objects.get(pk=data['goods'])
+
+        stock_in, reservation = services.record_stock_in(
+            goods=goods,
+            reservation_id=data['reservation'],
+            quantity=data.get('quantity'),
+            operator=request.user,
+            batch_no=data.get('batch_no', ''),
+            supplier=data.get('supplier', ''),
+            remark=data.get('remark', ''),
+        )
+        logger.info(
+            '用户 %s 正式入库 %s 数量 %s，消费预约 %s',
+            request.user.username, goods.code, stock_in.quantity, reservation.reservation_no
+        )
+        return success_response(data=StockInSerializer(stock_in).data, message='入库成功')
 
 
 class StockOutListView(APIView):
